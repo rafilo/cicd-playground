@@ -1,4 +1,6 @@
 # CI/CD GitOps Kubernetes 学习项目
+
+最新功能：[前端主页与三副本负载均衡](docs/frontend.md)。发布后使用 svc/demo-web 的 8081:80 端口转发访问主页。
 中文、可运行、业务 Deployment 固定 3 副本。项目只位于 C:\Users\AAA\Desktop\cicd-gitops。
 
 ## 实际完成状态
