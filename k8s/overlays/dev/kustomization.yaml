@@ -5,4 +5,4 @@ resources: [../../base]
 images:
   - name: demo
     newName: ghcr.io/rafilo/cicd-playground
-    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    digest: sha256:d2129e56e3ec25b692e111400b611527be05f37624649418a3bcc1386b8f582a
