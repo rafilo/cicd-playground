@@ -4,5 +4,5 @@ namespace: cicd-demo
 resources: [../../base]
 images:
   - name: demo
-    newName: ghcr.io/OWNER/cicd-gitops
+    newName: ghcr.io/rafilo/cicd-playground
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

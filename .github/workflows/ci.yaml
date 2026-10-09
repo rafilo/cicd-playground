@@ -2,7 +2,7 @@ name: CI and image PR
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
     paths: ['app/**', 'test/**', 'Dockerfile', 'package.json', 'scripts/**', '.github/workflows/**']
   workflow_dispatch:
 permissions:
@@ -18,12 +18,21 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '24'}
       - run: npm test && npm run validate
+      - name: Install pinned kubectl
+        shell: bash
+        run: |
+          curl -fsSLo /tmp/kubectl https://dl.k8s.io/release/v1.36.1/bin/linux/amd64/kubectl
+          curl -fsSLo /tmp/kubectl.sha256 https://dl.k8s.io/release/v1.36.1/bin/linux/amd64/kubectl.sha256
+          echo "$(cat /tmp/kubectl.sha256)  /tmp/kubectl" | sha256sum --check
+          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
       - run: kubectl kustomize k8s/overlays/dev > /tmp/rendered.yaml
   publish:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
     permissions: {contents: write, packages: write, pull-requests: write}
+    env:
+      PR_TOKEN: ${{ secrets.GITOPS_PR_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -47,7 +56,8 @@ jobs:
         env:
           IMAGE: ${{ steps.image.outputs.name }}
           DIGEST: ${{ steps.build.outputs.digest }}
-      - uses: peter-evans/create-pull-request@v7
+      - if: env.PR_TOKEN != ''
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITOPS_PR_TOKEN }}
           branch: gitops/image-${{ github.sha }}
@@ -55,3 +65,17 @@ jobs:
           commit-message: 'deploy: update immutable image digest'
           body: 'CI 已测试并发布镜像。请审查 digest，合并后 ArgoCD 自动同步。'
           add-paths: k8s/overlays/dev/kustomization.yaml
+      - name: Publish review branch when PR token is unavailable
+        if: env.PR_TOKEN == ''
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          branch="gitops/image-$SOURCE_SHA"
+          git checkout -b "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add k8s/overlays/dev/kustomization.yaml
+          git commit -m "deploy: update immutable image digest"
+          git push origin "$branch"
+          echo "镜像已发布，待仓库维护者从 $branch 创建并审查 PR。未直接部署。" >> "$GITHUB_STEP_SUMMARY"

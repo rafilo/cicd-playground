@@ -8,8 +8,10 @@ data:
     rule_files: [/etc/prometheus/alerts.yml]
     scrape_configs:
       - job_name: demo
-        static_configs:
-          - targets: ['demo.cicd-demo.svc:80']
+        dns_sd_configs:
+          - names: ['demo-metrics.cicd-demo.svc']
+            type: A
+            port: 8080
       - job_name: argocd
         static_configs:
           - targets: ['argocd-metrics.argocd.svc:8082']
@@ -22,6 +24,11 @@ data:
             for: 1m
             labels: {severity: warning}
             annotations: {summary: '业务 Service 无法抓取'}
+          - alert: DemoReadyBelowThree
+            expr: (count(up{job="demo"} == 1) < 3) or absent(up{job="demo"})
+            for: 1m
+            labels: {severity: warning}
+            annotations: {summary: '业务可抓取 Pod 不足 3'}
           - alert: ArgoApplicationUnhealthy
             expr: argocd_app_info{name="cicd-demo",health_status!="Healthy"} == 1
             for: 3m
@@ -48,6 +55,11 @@ spec:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 250m, memory: 256Mi}
           ports: [{containerPort: 9090}]
+          readinessProbe:
+            httpGet: {path: /-/ready, port: 9090}
+          livenessProbe:
+            httpGet: {path: /-/healthy, port: 9090}
+            initialDelaySeconds: 10
           volumeMounts:
             - {name: config, mountPath: /etc/prometheus}
             - {name: data, mountPath: /prometheus}
@@ -56,3 +68,12 @@ spec:
           configMap: {name: demo-prometheus}
         - name: data
           emptyDir: {sizeLimit: 300Mi}
+
+---
+apiVersion: v1
+kind: Service
+metadata: {name: demo-metrics, namespace: cicd-demo}
+spec:
+  clusterIP: None
+  selector: {app: demo}
+  ports: [{name: metrics, port: 8080, targetPort: http}]

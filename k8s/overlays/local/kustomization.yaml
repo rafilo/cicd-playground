@@ -5,4 +5,4 @@ resources: [../../base]
 images:
   - name: demo
     newName: cicd-demo
-    newTag: local
+    newTag: local-v2

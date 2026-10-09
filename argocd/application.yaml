@@ -4,8 +4,8 @@ metadata: {name: cicd-demo, namespace: argocd}
 spec:
   project: cicd-demo
   source:
-    repoURL: https://github.com/OWNER/cicd-gitops.git
-    targetRevision: main
+    repoURL: https://github.com/rafilo/cicd-playground.git
+    targetRevision: master
     path: k8s/overlays/dev
   destination: {server: 'https://kubernetes.default.svc', namespace: cicd-demo}
   syncPolicy:
