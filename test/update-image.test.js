@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 const script=path.resolve('scripts/update-image.js');
-test('镜像摘要更新及拒绝无效输入',()=>{
+test('Image digest update and invalid input rejection',()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'gitops-'));
  try{
   fs.mkdirSync(path.join(temp,'k8s/overlays/dev'),{recursive:true});

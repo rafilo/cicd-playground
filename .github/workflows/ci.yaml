@@ -63,7 +63,7 @@ jobs:
           branch: gitops/image-${{ github.sha }}
           title: 'deploy: image ${{ github.sha }}'
           commit-message: 'deploy: update immutable image digest'
-          body: 'CI 已测试并发布镜像。请审查 digest，合并后 ArgoCD 自动同步。'
+          body: 'CI tested and published the image. Review the digest; ArgoCD syncs after merge.'
           add-paths: k8s/overlays/dev/kustomization.yaml
       - name: Publish review branch when PR token is unavailable
         if: env.PR_TOKEN == ''
@@ -78,4 +78,4 @@ jobs:
           git add k8s/overlays/dev/kustomization.yaml
           git commit -m "deploy: update immutable image digest"
           git push origin "$branch"
-          echo "镜像已发布，待仓库维护者从 $branch 创建并审查 PR。未直接部署。" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image published. A repository maintainer must create and review a PR from $branch. No direct deployment was performed." >> "$GITHUB_STEP_SUMMARY"
