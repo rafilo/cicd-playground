@@ -3,6 +3,7 @@ kind: Service
 metadata:
   name: demo
 spec:
+  sessionAffinity: None
   selector: {app: demo}
   ports:
     - {name: http, port: 80, targetPort: http}
