@@ -1,0 +1,1 @@
+{"name":"cicd-gitops","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node app/server.js","test":"node --test","validate":"node scripts/validate.js"},"engines":{"node":">=24"}}

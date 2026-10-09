@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo
+spec:
+  replicas: 3
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 180
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {app: demo}
+  template:
+    metadata:
+      labels: {app: demo}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: demo
+          image: demo:bootstrap
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8080}
+          resources:
+            requests: {cpu: 50m, memory: 48Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 10

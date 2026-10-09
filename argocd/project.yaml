@@ -1,0 +1,12 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata: {name: cicd-demo, namespace: argocd}
+spec:
+  sourceRepos: ['https://github.com/OWNER/cicd-gitops.git']
+  destinations:
+    - {namespace: cicd-demo, server: 'https://kubernetes.default.svc'}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: apps, kind: Deployment}
+    - {group: '', kind: Service}
+    - {group: policy, kind: PodDisruptionBudget}

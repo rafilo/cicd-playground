@@ -1,0 +1,15 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: cicd-demo, namespace: argocd}
+spec:
+  project: cicd-demo
+  source:
+    repoURL: https://github.com/OWNER/cicd-gitops.git
+    targetRevision: main
+    path: k8s/overlays/dev
+  destination: {server: 'https://kubernetes.default.svc', namespace: cicd-demo}
+  syncPolicy:
+    automated: {enabled: true, prune: true, selfHeal: true, allowEmpty: false}
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 3m}
