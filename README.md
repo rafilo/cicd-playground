@@ -6,7 +6,7 @@
 应用测试、配置检查、镜像构建、Kustomize 渲染、Kubernetes 服务端 dry-run 已完成。
 本地 overlay 已部署到 cicd-demo，3 个业务 Pod Ready。它是本地运行验证，尚不是 GitOps CD。
 ArgoCD v3.5.2 的 7 个组件均 Ready；Prometheus 已部署并抓取 3 个业务 Pod 和 Argo 指标，最终状态见 docs/validation.md。
-已关联公开仓库 https://github.com/rafilo/cicd-playground ，默认分支 master；远程链路最新状态见 docs/validation.md。
+已关联公开仓库 https://github.com/rafilo/cicd-playground ，默认分支 master；首次远程 CI 与 GHCR 推送已成功，发布 PR #1 检查通过，等待人工审查合并；最新状态见 docs/remote-validation.md。
 dev 中 OWNER 与全零 digest 是明确占位符，必须先生成真实镜像 PR，再引导 Application。
 
 ## 架构
@@ -69,7 +69,7 @@ kubectl port-forward -n cicd-demo svc/demo 8080:80
 ## GitHub / GHCR 配置与首次 GitOps 引导
 1. 创建仓库（建议学习时公开），默认分支 master。将 argocd 两文件 repoURL/sourceRepos 的 OWNER 替换成精确仓库 URL；dev 镜像由首次 CI 更新。
 2. 在此目录 git init -b master，git add .，git commit，然后按 GitHub 提示添加 origin 并 push。不要提交 Secret、kubeconfig、备份或 token。
-3. 仓库 Settings → Actions 开启工作流。创建仅授权此仓库的 fine-grained PAT，Contents: read/write、Pull requests: read/write，保存为 Actions secret **GITOPS_PR_TOKEN**。仅 PR 创建步骤使用它。也可改为 GitHub App 安装 token。GHCR 发布只使用临时 GITHUB_TOKEN 的 packages:write。
+3. 仓库 Settings → Actions 开启工作流。如需全自动创建 PR，创建仅授权此仓库的 fine-grained PAT，Contents: read/write、Pull requests: read/write，保存为 Actions secret **GITOPS_PR_TOKEN**。该 token 为可选；未配置时 CI 发布审查分支，维护者创建 PR。仅 PR 创建步骤使用它。也可改为 GitHub App 安装 token。GHCR 发布只使用临时 GITHUB_TOKEN 的 packages:write。
 4. master 第一次 push 或手动 workflow_dispatch：测试 → 推送 ghcr.io/小写owner/小写repo:sha-提交SHA → 以构建返回的 sha256 digest 更新 dev → 创建分支 gitops/image-SHA 的 PR。合并前审查镜像路径、digest 与测试。配置 master 分支保护：必须 PR、至少一次人工审批、必须通过 test；不要允许自动合并绕过审批。
 5. 推送只监听源码/测试/构建文件，镜像 PR 只改 dev 清单；合并不会再次构建，PR 检查全部执行，从而避免循环。PAT 可正常触发 PR 检查；无专用 PAT 时 CI 仍发布镜像并推送 gitops/image-SHA 审查分支，由维护者通过 GitHub CLI 创建 PR；没有直接部署或自动合并。
 6. GHCR 包首次发布默认可能私有。公开镜像最省事：包 Settings 设置 public。私有镜像需要下面的集群 imagePullSecret；GITHUB_TOKEN 不适合长期集群拉取。
@@ -127,3 +127,5 @@ kubectl get deploy demo -n cicd-demo -o jsonpath='{.spec.template.spec.container
 工作流固定下载 kubectl v1.36.1 并校验官方 SHA256，依据 https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/ 。
 
 本仓库使用 master 分支和 ghcr.io/rafilo/cicd-playground 镜像。未更改 Actions 创建/批准 PR 安全设置。未配置 GITOPS_PR_TOKEN 时，CI 推送审查分支后，运行 gh pr create --base master --head gitops/image-代码SHA 创建发布 PR。配置专用 token 后可自动创建 PR。不会将本机 CLI 登录凭据复制到 Actions。
+
+最新远程进度：[CI 与发布 PR 验证记录](docs/remote-validation.md)。PR #1 合并前，集群继续运行 local-v2，尚未完成 GitOps CD。
