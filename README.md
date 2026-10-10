@@ -298,8 +298,6 @@ Useful endpoints:
 | `/readyz` | Readiness probe |
 | `/metrics` | Prometheus request counter |
 
-Build a local image with `docker build -t cicd-demo:local-v2 --build-arg VERSION=local .`. The local overlay is for manual experiments in an isolated test cluster; do not apply it over the GitOps-managed deployment because Argo CD self-healing will restore the Git version.
-
 ## Operations and troubleshooting
 
 ```powershell
@@ -344,7 +342,6 @@ Closing a port-forward terminal leaves the cluster running. Stopping Docker Desk
 | `cluster/kind.yaml` | Reproducible local Kubernetes node configuration |
 | `k8s/base/` | Three backends, web entry, Services, and PDB |
 | `k8s/overlays/dev/` | GitOps namespace and published image digest |
-| `k8s/overlays/local/` | Local experiment image override |
 | `argocd/` | Restricted project, application, and pinned installation |
 | `ops/` | Optional lightweight Prometheus configuration |
 | `scripts/` | Cluster setup, bootstrap, inspection, and validation |
