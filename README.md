@@ -380,8 +380,8 @@ Earlier validation also covered CI/GHCR publication, reviewed image releases, is
 
 See [the production migration runbook](docs/production.md) for the isolated multi-node environment, local ingress, promotion PRs, rollback, and remaining production requirements.
 
-`powershell
+```powershell
 ./scripts/start-production.ps1
-` 
+```
 
 Application: http://localhost:18080

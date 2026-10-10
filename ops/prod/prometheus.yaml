@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: demo-prometheus, namespace: cicd-prod-observe}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    rule_files: [/etc/prometheus/alerts.yml]
+    scrape_configs:
+      - job_name: demo
+        dns_sd_configs:
+          - names: ['demo-metrics.cicd-prod.svc']
+            type: A
+            port: 8080
+      - job_name: argocd
+        static_configs:
+          - targets: ['argocd-metrics.argocd.svc:8082']
+  alerts.yml: |
+    groups:
+      - name: demo
+        rules:
+          - alert: DemoUnreachable
+            expr: up{job="demo"} == 0
+            for: 1m
+            labels: {severity: warning}
+            annotations: {summary: 'Backend metrics are unreachable'}
+          - alert: DemoReadyBelowThree
+            expr: (count(up{job="demo"} == 1) < 3) or absent(up{job="demo"})
+            for: 1m
+            labels: {severity: warning}
+            annotations: {summary: 'Fewer than three backend metrics targets are available'}
+          - alert: ArgoApplicationUnhealthy
+            expr: argocd_app_info{name="cicd-production",health_status!="Healthy"} == 1
+            for: 3m
+            labels: {severity: warning}
+            annotations: {summary: 'Production Argo application is unhealthy'}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: demo-prometheus, namespace: cicd-prod-observe}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: demo-prometheus}
+  template:
+    metadata:
+      labels: {app: demo-prometheus}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.5.0
+          args: ['--config.file=/etc/prometheus/prometheus.yml','--storage.tsdb.path=/prometheus','--storage.tsdb.retention.time=24h','--storage.tsdb.retention.size=256MB']
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          ports: [{containerPort: 9090}]
+          readinessProbe:
+            httpGet: {path: /-/ready, port: 9090}
+          livenessProbe:
+            httpGet: {path: /-/healthy, port: 9090}
+            initialDelaySeconds: 10
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: demo-prometheus}
+        - name: data
+          emptyDir: {sizeLimit: 300Mi}
+
+---
+apiVersion: v1
+kind: Service
+metadata: {name: demo-metrics, namespace: cicd-prod}
+spec:
+  clusterIP: None
+  selector: {app: demo}
+  ports: [{name: metrics, port: 8080, targetPort: http}]

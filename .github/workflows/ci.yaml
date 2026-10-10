@@ -26,6 +26,7 @@ jobs:
           echo "$(cat /tmp/kubectl.sha256)  /tmp/kubectl" | sha256sum --check
           sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
       - run: kubectl kustomize k8s/overlays/dev > /tmp/rendered.yaml
+      - run: kubectl kustomize k8s/overlays/prod > /tmp/production.yaml
   publish:
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     needs: test
