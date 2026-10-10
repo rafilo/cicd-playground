@@ -22,6 +22,7 @@ patches:
           - maxSkew: 1
             topologyKey: kubernetes.io/hostname
             whenUnsatisfiable: DoNotSchedule
+            matchLabelKeys: [app]
             labelSelector:
               matchLabels:
                 app.kubernetes.io/part-of: cicd-production
