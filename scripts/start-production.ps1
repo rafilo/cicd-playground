@@ -29,5 +29,7 @@ K apply -f argocd/prod/application.yaml
 K apply -f ops/prod/prometheus.yaml
 K apply -f ops/prod/service.yaml
 K rollout status deployment/argocd-server -n argocd --timeout=300s
-Write-Host 'Production GitOps bootstrap completed. Application ingress: http://localhost:18080'
-Write-Host 'Wait for cicd-production to become Synced and Healthy in ArgoCD before acceptance.'
+K wait --for=jsonpath='{.status.sync.status}'=Synced application/cicd-production -n argocd --timeout=300s
+K wait --for=jsonpath='{.status.health.status}'=Healthy application/cicd-production -n argocd --timeout=300s
+K rollout status deployment/demo-prometheus -n cicd-prod-observe --timeout=180s
+Write-Host 'Production GitOps application is Synced and Healthy. Ingress: http://localhost:18080'
