@@ -1,0 +1,15 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: cicd-production, namespace: argocd}
+spec:
+  project: cicd-production
+  source:
+    repoURL: https://github.com/rafilo/cicd-playground.git
+    targetRevision: master
+    path: k8s/overlays/prod
+  destination: {server: 'https://kubernetes.default.svc', namespace: cicd-prod}
+  syncPolicy:
+    automated: {enabled: true, prune: true, selfHeal: true, allowEmpty: false}
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 3m}

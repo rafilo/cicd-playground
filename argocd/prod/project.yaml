@@ -1,0 +1,13 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata: {name: cicd-production, namespace: argocd}
+spec:
+  sourceRepos: ['https://github.com/rafilo/cicd-playground.git']
+  destinations:
+    - {namespace: cicd-prod, server: 'https://kubernetes.default.svc'}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: apps, kind: Deployment}
+    - {group: '', kind: Service}
+    - {group: policy, kind: PodDisruptionBudget}
+    - {group: networking.k8s.io, kind: Ingress}

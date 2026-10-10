@@ -375,3 +375,13 @@ Earlier validation also covered CI/GHCR publication, reviewed image releases, is
 - [GitHub workflow triggering](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
 - [Official Node.js images](https://github.com/nodejs/docker-node)
 - [Prometheus alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)
+
+## Local production deployment
+
+See [the production migration runbook](docs/production.md) for the isolated multi-node environment, local ingress, promotion PRs, rollback, and remaining production requirements.
+
+`powershell
+./scripts/start-production.ps1
+` 
+
+Application: http://localhost:18080
