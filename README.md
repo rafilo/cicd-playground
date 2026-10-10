@@ -4,7 +4,7 @@ A runnable learning project with a dependency-free Node.js application, a web da
 
 - Repository: [rafilo/cicd-playground](https://github.com/rafilo/cicd-playground)
 - Default branch: `master`
-- Local checkout: `C:\Users\AAA\Desktop\cicd-gitops`
+- Local checkout: `<your-directory>\cicd-gitops`
 - Project cluster: `cicd-gitops`
 - Kubernetes context: `kind-cicd-gitops`
 - Application namespace: `cicd-demo`
@@ -33,6 +33,8 @@ CI builds images and updates Git through a reviewable PR. CI has no kubeconfig a
 
 The `demo` Deployment has three replicas. The additional `demo-web` Pod serves the homepage and forwards identity requests through the `demo` Service. Argo CD and monitoring Pods are separate from the three backend replicas.
 
+Replace `<your-directory>` with the parent directory where you keep this checkout before running the commands.
+
 ## Requirements
 
 | Tool | Project version or requirement |
@@ -59,7 +61,7 @@ Use this procedure after restarting your computer or Docker Desktop. Start Docke
 ### 1. Update the checkout and check Docker
 
 ```powershell
-Set-Location C:\Users\AAA\Desktop\cicd-gitops
+Set-Location "<your-directory>\cicd-gitops"
 git switch master
 git pull --ff-only origin master
 docker info
@@ -120,7 +122,7 @@ Use this procedure for a fresh installation or after the cluster has been delete
 If you already have the checkout, update it instead of cloning again:
 
 ```powershell
-Set-Location C:\Users\AAA\Desktop\cicd-gitops
+Set-Location "<your-directory>\cicd-gitops"
 git pull --ff-only origin master
 docker info
 ```
@@ -128,7 +130,7 @@ docker info
 For a new checkout:
 
 ```powershell
-Set-Location C:\Users\AAA\Desktop
+Set-Location "<your-directory>"
 git clone https://github.com/rafilo/cicd-playground.git cicd-gitops
 Set-Location cicd-gitops
 ```
