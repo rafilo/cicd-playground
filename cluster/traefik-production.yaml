@@ -5,6 +5,10 @@ providers:
     enabled: false
   kubernetesIngress:
     enabled: true
+    publishedService:
+      enabled: false
+    ingressEndpoint:
+      ip: 127.0.0.1
     namespaces:
       - cicd-prod
   kubernetesGateway:
