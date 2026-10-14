@@ -1,0 +1,67 @@
+parameters:
+  - name: targetEnvironment
+    type: string
+    values: [dev, prod]
+
+jobs:
+  - job: SimulateGitOpsCD
+    displayName: Prepare ${{ parameters.targetEnvironment }} GitOps review artifacts
+    steps:
+      - checkout: self
+        persistCredentials: false
+      - bash: |
+          set -euo pipefail
+          version=v1.36.1
+          curl -fsSLo /tmp/kubectl "https://dl.k8s.io/release/$version/bin/linux/amd64/kubectl"
+          curl -fsSLo /tmp/kubectl.sha256 "https://dl.k8s.io/release/$version/bin/linux/amd64/kubectl.sha256"
+          echo "$(cat /tmp/kubectl.sha256)  /tmp/kubectl" | sha256sum --check
+          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+        displayName: Install checksum-verified kubectl for offline rendering
+      - ${{ if eq(parameters.targetEnvironment, 'prod') }}:
+          - pwsh: ./scripts/promote-production.ps1
+            displayName: Copy accepted development digest into production workspace
+      - pwsh: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:ARTIFACT_ROOT $env:TARGET_ENVIRONMENT
+          New-Item -ItemType Directory -Force $output | Out-Null
+          $manifest = & kubectl kustomize "k8s/overlays/$env:TARGET_ENVIRONMENT"
+          if ($LASTEXITCODE -ne 0) { throw 'Kustomize rendering failed.' }
+          $manifest | Set-Content (Join-Path $output 'manifests.yaml') -Encoding utf8
+          $patch = & git diff -- "k8s/overlays/$env:TARGET_ENVIRONMENT/kustomization.yaml"
+          if ($LASTEXITCODE -ne 0) { throw 'Promotion diff failed.' }
+          $patch | Set-Content (Join-Path $output 'promotion.patch') -Encoding utf8
+          $plan = [ordered]@{
+            mode = 'simulation'
+            environment = $env:TARGET_ENVIRONMENT
+            sourceCommit = $env:SOURCE_COMMIT
+            overlay = "k8s/overlays/$env:TARGET_ENVIRONMENT"
+            azureSubscriptionId = $env:AZURE_SUBSCRIPTION_ID
+            serviceConnection = $env:AZURE_SERVICE_CONNECTION
+            resourceGroup = $env:AZURE_RESOURCE_GROUP
+            aksCluster = $env:AKS_CLUSTER
+            acrLoginServer = $env:ACR_LOGIN_SERVER
+            azureDevOpsEnvironment = $env:ADO_ENVIRONMENT
+            nextAction = 'Review the promotion patch in a GitHub PR; ArgoCD deploys after merge.'
+          }
+          $plan | ConvertTo-Json | Set-Content (Join-Path $output 'simulation-plan.json') -Encoding utf8
+          Write-Host "Simulation completed for $env:TARGET_ENVIRONMENT. No deployment was performed."
+        displayName: Render manifests and publish simulated delivery plan
+        env:
+          TARGET_ENVIRONMENT: ${{ parameters.targetEnvironment }}
+          ARTIFACT_ROOT: $(Build.ArtifactStagingDirectory)
+          SOURCE_COMMIT: $(Build.SourceVersion)
+          AZURE_SUBSCRIPTION_ID: $(azureSubscriptionId)
+          AZURE_SERVICE_CONNECTION: $(azureServiceConnection)
+          AZURE_RESOURCE_GROUP: $(azureResourceGroup)
+          AKS_CLUSTER: $(aksClusterName)
+          ACR_LOGIN_SERVER: $(acrLoginServer)
+          ${{ if eq(parameters.targetEnvironment, 'dev') }}:
+            ADO_ENVIRONMENT: $(devEnvironment)
+          ${{ else }}:
+            ADO_ENVIRONMENT: $(prodEnvironment)
+      - task: PublishPipelineArtifact@1
+        displayName: Publish review artifacts
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)/${{ parameters.targetEnvironment }}'
+          artifact: 'simulated-cd-${{ parameters.targetEnvironment }}'
+          publishLocation: pipeline

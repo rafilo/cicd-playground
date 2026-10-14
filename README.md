@@ -382,3 +382,7 @@ See [the production migration runbook](docs/production.md) for the isolated mult
 ```
 
 Application: http://localhost:18080
+
+## Simulated Azure DevOps CD
+
+The manually triggered [Azure Pipelines CD example](azure-pipelines.cd.yml) renders dev and prod manifests and publishes promotion review artifacts. Azure resources use placeholders; no Azure login or cluster deployment is performed. See the [setup and extension guide](docs/azure-devops-cd.md).

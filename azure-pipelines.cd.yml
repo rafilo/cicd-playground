@@ -1,0 +1,38 @@
+# Simulation only: no Azure login, cluster mutation, Git push, or PR creation.
+trigger: none
+pr: none
+
+parameters:
+  - name: promoteToProd
+    displayName: Simulate production promotion after development
+    type: boolean
+    default: true
+
+variables:
+  azureSubscriptionId: '<azure-subscription-id>'
+  azureServiceConnection: '<azure-service-connection>'
+  azureResourceGroup: '<azure-resource-group>'
+  aksClusterName: '<aks-cluster-name>'
+  acrLoginServer: '<acr-name>.azurecr.io'
+  devEnvironment: '<azure-devops-dev-environment>'
+  prodEnvironment: '<azure-devops-prod-environment>'
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: SimulateDev
+    displayName: Simulate development CD
+    jobs:
+      - template: pipelines/templates/simulate-gitops-cd.yml
+        parameters:
+          targetEnvironment: dev
+  - ${{ if eq(parameters.promoteToProd, true) }}:
+      - stage: SimulateProd
+        displayName: Simulate production CD
+        dependsOn: SimulateDev
+        condition: succeeded()
+        jobs:
+          - template: pipelines/templates/simulate-gitops-cd.yml
+            parameters:
+              targetEnvironment: prod
