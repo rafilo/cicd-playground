@@ -2,8 +2,10 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0.402 AS build
 WORKDIR /src
 COPY global.json ./
 COPY NuGet.Config ./
+COPY Directory.Build.props ./
 COPY app/PodFlow.csproj app/
-RUN dotnet restore app/PodFlow.csproj --configfile NuGet.Config
+COPY app/packages.lock.json app/
+RUN dotnet restore app/PodFlow.csproj --configfile NuGet.Config --locked-mode
 COPY app/ app/
 RUN dotnet publish app/PodFlow.csproj -c Release --no-restore -o /out /p:UseAppHost=false
 

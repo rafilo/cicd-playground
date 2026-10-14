@@ -120,10 +120,7 @@ public static class DemoApplication
             if (length > 65_536) throw new InvalidDataException("Upstream response is too large.");
             using var document = JsonDocument.Parse(buffer.AsMemory(0, length));
             var body = document.RootElement;
-            if (body.ValueKind != JsonValueKind.Object ||
-                !body.TryGetProperty("pod", out var pod) || pod.ValueKind != JsonValueKind.String ||
-                !body.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.String)
-                throw new InvalidDataException("Invalid identity response.");
+            IdentityResponseValidator.Validate(body);
             await context.Response.WriteAsJsonAsync(body, context.RequestAborted);
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or IOException or InvalidDataException)

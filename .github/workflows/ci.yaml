@@ -3,7 +3,7 @@ on:
   pull_request:
   push:
     branches: [master]
-    paths: ['app/**', 'test/**', 'Dockerfile', '.dockerignore', 'global.json', 'NuGet.Config', 'package.json', 'scripts/**', '.github/workflows/**']
+    paths: ['app/**', 'test/**', 'Dockerfile', '.dockerignore', 'global.json', 'Directory.Build.props', 'Directory.Packages.props', 'NuGet.Config', 'package.json', 'scripts/**', '.github/workflows/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,14 +13,38 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Restore cached NuGet packages
+        id: nuget-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', 'NuGet.Config', '**/*.csproj', '**/packages.lock.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/Directory.Packages.props') }}
+      - name: Report NuGet cache result
+        env:
+          CACHE_HIT: ${{ steps.nuget-cache.outputs.cache-hit }}
+        run: echo "NuGet cache exact hit=$CACHE_HIT; restore reuses packages from NUGET_PACKAGES."
       - uses: actions/setup-node@v4
         with: {node-version: '24'}
-      - run: dotnet restore test/PodFlow.SmokeTests.csproj --configfile NuGet.Config
+      - name: Restore locked dependencies (reuse cached packages)
+        run: |
+          dotnet restore test/UnitTests/PodFlow.UnitTests.csproj --configfile NuGet.Config --locked-mode
+          dotnet restore test/PodFlow.SmokeTests.csproj --configfile NuGet.Config --locked-mode
+      - name: Run .NET unit tests without another restore
+        run: dotnet test test/UnitTests/PodFlow.UnitTests.csproj -c Release --no-restore --logger "trx;LogFileName=unit-tests.trx" --results-directory TestResults
+      - name: Upload .NET unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-unit-test-results
+          path: TestResults/*.trx
+          if-no-files-found: ignore
       - run: dotnet build test/PodFlow.SmokeTests.csproj -c Release --no-restore
       - name: Run .NET HTTP integration checks
         run: dotnet run --project test/PodFlow.SmokeTests.csproj -c Release --no-build

@@ -32,6 +32,7 @@ flowchart TD
 | `app/PodFlow.csproj`、`app/Program.cs` | .NET Web 应用、代理、健康与指标接口 |
 | `app/wwwroot/` | 原有页面与资源，显式白名单暴露 |
 | `test/PodFlow.SmokeTests.csproj` | 无外部测试包的 C# HTTP 集成测试可执行程序 |
+| `test/UnitTests/PodFlow.UnitTests.csproj` | xUnit 单元测试；NuGet 依赖通过 CI 缓存复用 |
 | `Dockerfile` | SDK 编译发布 → ASP.NET runtime，UID/GID 1000，端口 8080 |
 | `.github/workflows/ci.yaml` | PR 校验、镜像构建测试、master 发布、digest PR |
 | `scripts/update-image.js` | 修改 dev overlay 的镜像名与 digest |
@@ -50,6 +51,8 @@ flowchart TD
 ```powershell
 git switch -c codex/migrate-dotnet
 dotnet --version
+dotnet restore test/UnitTests/PodFlow.UnitTests.csproj --configfile NuGet.Config --locked-mode
+dotnet test test/UnitTests/PodFlow.UnitTests.csproj --no-restore
 dotnet restore test/PodFlow.SmokeTests.csproj --configfile NuGet.Config
 dotnet build test/PodFlow.SmokeTests.csproj -c Release --no-restore
 dotnet run --project test/PodFlow.SmokeTests.csproj -c Release --no-build
@@ -89,6 +92,8 @@ gh pr create --base master --title "Migrate application to .NET" --body "Replace
 以上为操作示例，本次修改没有执行 commit/push/PR。提交前检查 `git diff --cached`，保留其他尚未提交的 Terraform 工作。
 
 PR 自动执行 SDK restore/build、C# 集成测试、Node 镜像更新测试、配置检查、两个 overlay 渲染，并构建真实 Linux 镜像。容器测试使用只读文件系统、UID 1000、删除 capabilities，并检查探针、页面和 APP_VERSION。PR 不推镜像、不访问集群。
+
+CI 还运行 xUnit 单元测试并上传 TRX 结果；依赖锁文件不变时复用 NuGet 包缓存。详见 [NuGet 缓存说明](nuget-cache.md)。
 
 ## 5. 发布开发版本
 

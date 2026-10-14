@@ -4,5 +4,6 @@
 !Dockerfile
 !global.json
 !NuGet.Config
+!Directory.Build.props
 **/bin
 **/obj
