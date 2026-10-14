@@ -1,8 +1,18 @@
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+FROM mcr.microsoft.com/dotnet/sdk:10.0.402 AS build
+WORKDIR /src
+COPY global.json ./
+COPY NuGet.Config ./
+COPY app/PodFlow.csproj app/
+RUN dotnet restore app/PodFlow.csproj --configfile NuGet.Config
+COPY app/ app/
+RUN dotnet publish app/PodFlow.csproj -c Release --no-restore -o /out /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 ARG VERSION=dev
-ENV APP_VERSION=$VERSION NODE_ENV=production
+ENV APP_VERSION=$VERSION ASPNETCORE_HTTP_PORTS=8080 DOTNET_EnableDiagnostics=0
 WORKDIR /app
-COPY --chown=node:node app/ ./
-USER node
+COPY --from=build --chown=1000:1000 /out/ ./
+# Match existing Kubernetes runAsUser/runAsGroup and restricted Pod Security.
+USER 1000:1000
 EXPOSE 8080
-CMD ["node","server.js"]
+ENTRYPOINT ["dotnet", "PodFlow.dll"]

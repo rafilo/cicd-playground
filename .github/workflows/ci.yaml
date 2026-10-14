@@ -3,7 +3,7 @@ on:
   pull_request:
   push:
     branches: [master]
-    paths: ['app/**', 'test/**', 'Dockerfile', 'package.json', 'scripts/**', '.github/workflows/**']
+    paths: ['app/**', 'test/**', 'Dockerfile', '.dockerignore', 'global.json', 'NuGet.Config', 'package.json', 'scripts/**', '.github/workflows/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,9 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
       - uses: actions/setup-node@v4
         with: {node-version: '24'}
+      - run: dotnet restore test/PodFlow.SmokeTests.csproj --configfile NuGet.Config
+      - run: dotnet build test/PodFlow.SmokeTests.csproj -c Release --no-restore
+      - name: Run .NET HTTP integration checks
+        run: dotnet run --project test/PodFlow.SmokeTests.csproj -c Release --no-build
       - run: npm test && npm run validate
+      - run: node --check app/wwwroot/client.js
       - name: Install pinned kubectl
         shell: bash
         run: |
@@ -27,6 +35,24 @@ jobs:
           sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
       - run: kubectl kustomize k8s/overlays/dev > /tmp/rendered.yaml
       - run: kubectl kustomize k8s/overlays/prod > /tmp/production.yaml
+      - uses: docker/setup-buildx-action@v3
+      - name: Build .NET runtime image on every PR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: podflow:ci
+          build-args: VERSION=${{ github.sha }}
+      - name: Verify read-only non-root container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name podflow-ci --read-only --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 -p 127.0.0.1:18081:8080 podflow:ci
+          trap 'docker logs podflow-ci; docker rm -f podflow-ci' EXIT
+          curl --retry 20 --retry-delay 1 --retry-connrefused --fail http://127.0.0.1:18081/readyz
+          curl --fail http://127.0.0.1:18081/ | grep -q 'Traffic distribution'
+          curl --fail http://127.0.0.1:18081/api/whoami | python3 -c 'import json,sys; body=json.load(sys.stdin); assert body["version"] == sys.argv[1]' "$GITHUB_SHA"
   publish:
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     needs: test
@@ -36,6 +62,8 @@ jobs:
       PR_TOKEN: ${{ secrets.GITOPS_PR_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
       - uses: docker/setup-buildx-action@v3
       - id: image
         shell: bash

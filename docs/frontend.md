@@ -4,9 +4,9 @@
 
 ## 请求链路
 浏览器 → 本机端口转发 → demo-web Service / 入口 Pod → demo ClusterIP Service → 3 个 demo 业务 Pod。
-入口与业务使用同一个 Node Alpine 镜像；入口设置 UPSTREAM_URL=http://demo。
+入口与业务使用同一个 ASP.NET Core/.NET 10 镜像；入口设置 UPSTREAM_URL=http://demo。
 每次 API 代理请求使用一个新 TCP 连接，demo Service 的 sessionAffinity=None，由 Kubernetes 数据平面选择后端；不是 JavaScript 轮询 Pod，也不保证请求数严格相等。
-web 入口额外 1 个 Pod，请求 25m CPU/48Mi 内存，限制 250m/128Mi。3 个 demo 业务副本保持不变。
+web 入口额外 1 个 Pod；入口与后端各请求 100m CPU/96Mi 内存，限制 500m/256Mi。3 个 demo 业务副本保持不变。
 入口单副本是本地学习环境的资源取舍，不是生产高可用入口。
 
 ## 发布与访问
@@ -21,6 +21,7 @@ kubectl --context kind-cicd-gitops port-forward -n cicd-demo svc/demo-web 8081:8
 请转发 demo-web；直接 port-forward svc/demo 会选中单个 Pod，不能验证 Service 负载均衡。
 
 ## 验证
+以下是迁移前 Node 版本的历史记录；.NET 版本应按 [完整 CI/CD 指南](dotnet-cicd.md) 重新发布并验收。
 2026-10-09，在临时 cicd-preview 命名空间加载本地测试镜像并部署：
 - 3 个业务 Pod + 1 个入口 Pod Ready。
 - 60 次真实 Service 请求分布为 20、18、22，全部成功。

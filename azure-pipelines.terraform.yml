@@ -1,0 +1,21 @@
+# Static validation only. No Azure credentials, plan or apply.
+trigger: none
+pr: none
+pool:
+  vmImage: ubuntu-latest
+steps:
+  - checkout: self
+  - bash: |
+      set -euo pipefail
+      version=1.13.5
+      curl -fsSLO "https://releases.hashicorp.com/terraform/${version}/terraform_${version}_linux_amd64.zip"
+      curl -fsSLO "https://releases.hashicorp.com/terraform/${version}/terraform_${version}_SHA256SUMS"
+      grep " terraform_${version}_linux_amd64.zip$" "terraform_${version}_SHA256SUMS" | sha256sum -c -
+      unzip "terraform_${version}_linux_amd64.zip" -d "$(Agent.TempDirectory)/terraform-bin"
+      export PATH="$(Agent.TempDirectory)/terraform-bin:$PATH"
+      terraform fmt -check -recursive infra/azure
+      for root in platform application; do
+        terraform -chdir="infra/azure/$root" init -backend=false -input=false
+        terraform -chdir="infra/azure/$root" validate
+      done
+    displayName: Terraform format and schema validation (no Azure access)

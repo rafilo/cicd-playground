@@ -1,6 +1,6 @@
 # Kubernetes GitOps CI/CD Playground
 
-A runnable learning project with a dependency-free Node.js application, a web dashboard, three backend Pods, GitHub Actions, GHCR, Kustomize, and Argo CD.
+A runnable learning project with an ASP.NET Core / .NET 10 application, a web dashboard, three backend Pods, GitHub Actions, GHCR, Kustomize, and Argo CD. See [the complete .NET CI/CD runbook](docs/dotnet-cicd.md) for development, release, production promotion, rollback, and the Azure AKS deployment path.
 
 - Repository: [rafilo/cicd-playground](https://github.com/rafilo/cicd-playground)
 - Default branch: `master`
@@ -44,7 +44,8 @@ Replace `<your-directory>` with the parent directory where you keep this checkou
 | kind | v0.33.0 |
 | Kubernetes | v1.36.4, pinned by node image digest in `cluster/kind.yaml` |
 | kubectl | Tested with v1.36.1; keep within one minor version of the API server |
-| Node.js | 24, needed for local development and tests |
+| .NET SDK | 10.0.402 (see `global.json`), application build and HTTP integration tests |
+| Node.js | 24, repository automation and image-update tests only |
 | Git | Required to update the checkout |
 | GitHub CLI | Optional; used to create and inspect PRs |
 | Argo CD | v3.5.2, installed by the bootstrap script |
@@ -52,7 +53,7 @@ Replace `<your-directory>` with the parent directory where you keep this checkou
 
 Allocate approximately 4 CPUs and 6 GB RAM to Docker Desktop for this learning environment. The single-node cluster and single web entry are not a production high-availability design.
 
-The application uses an official Node 24 Alpine base pinned by digest. No npm dependency installation or frontend build tool is required.
+The application uses a multi-stage .NET SDK / ASP.NET runtime Docker build and runs as UID/GID 1000. The runtime image uses the .NET 10 servicing tag; review and pin a registry digest before production. No external application NuGet packages or frontend build tool are required.
 
 ## Start an existing project cluster
 
@@ -280,10 +281,13 @@ Use a suitable package-read credential, authorize organization SSO if required, 
 ## Local development
 
 ```powershell
+dotnet restore test/PodFlow.SmokeTests.csproj
+dotnet build test/PodFlow.SmokeTests.csproj -c Release --no-restore
+dotnet run --project test/PodFlow.SmokeTests.csproj -c Release --no-build
 npm test
 npm run validate
-node --check app/client.js
-npm start
+node --check app/wwwroot/client.js
+dotnet run --project app/PodFlow.csproj --urls http://localhost:8080
 ```
 
 The standalone app listens on port 8080. Its local identity API reports one instance; cluster-wide load balancing requires the Kubernetes web-entry setup.
@@ -336,9 +340,9 @@ Closing a port-forward terminal leaves the cluster running. Stopping Docker Desk
 
 | Path | Purpose |
 | --- | --- |
-| `app/` | Dependency-free server, frontend assets, and web proxy |
-| `test/` | Application, proxy, and digest-update tests |
-| `Dockerfile` | Minimal Node Alpine application image |
+| `app/` | ASP.NET Core server, `wwwroot` frontend assets, and web proxy |
+| `test/` | .NET HTTP integration runner and Node image-update tests |
+| `Dockerfile` | Multi-stage .NET build and non-root ASP.NET runtime image |
 | `cluster/kind.yaml` | Reproducible local Kubernetes node configuration |
 | `k8s/base/` | Three backends, web entry, Services, and PDB |
 | `k8s/overlays/dev/` | GitOps namespace and published image digest |
@@ -351,6 +355,8 @@ Closing a port-forward terminal leaves the cluster running. Stopping Docker Desk
 | `evidence/` | Optional ignored temporary verification output; safe to remove |
 
 ## Verification status
+
+The records below describe the earlier Node.js deployment. Migrating the source to .NET does not update the previously published image digests or running clusters. Publish the new image and merge its digest PR before verifying the .NET deployment; see [the .NET runbook](docs/dotnet-cicd.md).
 
 On 2026-10-10, the existing kind cluster was checked after recovery: the node was Ready, all three backend Pods and the web entry were Running/Ready, Argo CD was Synced/Healthy, and Prometheus was Running. A 30-request test through the web entry reached all three backend Pods.
 
@@ -370,7 +376,7 @@ Earlier validation also covered CI/GHCR publication, reviewed image releases, is
 - [GitHub Actions image publication](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
 - [GitHub Container registry authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
 - [GitHub workflow triggering](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
-- [Official Node.js images](https://github.com/nodejs/docker-node)
+- [Official .NET container images](https://github.com/dotnet/dotnet-docker)
 - [Prometheus alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)
 
 ## Local production deployment
@@ -386,3 +392,7 @@ Application: http://localhost:18080
 ## Simulated Azure DevOps CD
 
 The manually triggered [Azure Pipelines CD example](azure-pipelines.cd.yml) renders dev and prod manifests and publishes promotion review artifacts. Azure resources use placeholders; no Azure login or cluster deployment is performed. See the [setup and extension guide](docs/azure-devops-cd.md).
+
+## Azure AKS Terraform example
+
+See [the Azure Terraform guide](infra/azure/README.md) for an isolated private AKS platform, VNet, PostgreSQL, Key Vault, Entra RBAC, Azure Policy, audit logging, and a separate Terraform application deployment using the existing demo manifests. The current application does not use the example database. [The Terraform validation pipeline](azure-pipelines.terraform.yml) runs static checks only; Azure resources have not been provisioned.

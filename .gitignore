@@ -3,3 +3,17 @@ tools/
 evidence/
 backups/
 *.secret.yaml
+
+# Terraform local state, plans, caches and real environment inputs
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+
+# .NET build outputs
+**/bin/
+**/obj/
+TestResults/
