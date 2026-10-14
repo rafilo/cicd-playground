@@ -93,6 +93,8 @@ gh pr create --base master --title "Migrate application to .NET" --body "Replace
 
 PR 自动执行 SDK restore/build、C# 集成测试、Node 镜像更新测试、配置检查、两个 overlay 渲染，并构建真实 Linux 镜像。容器测试使用只读文件系统、UID 1000、删除 capabilities，并检查探针、页面和 APP_VERSION。PR 不推镜像、不访问集群。
 
+`scripts/verify-container.sh` 将测试容器的 8080 映射到 GitHub runner 的 `127.0.0.1:18081`；它不访问开发者电脑或 Kubernetes Pod。就绪检查会重试启动期间的连接重置、拒绝连接及 HTTP 错误，并检查容器是否提前退出。每次请求设有超时，最多尝试 30 次；就绪后才验证页面与版本。退出时打印容器状态和日志，并清理测试容器。`--noproxy '*'` 确保本机流量不经 HTTP 代理。
+
 CI 还运行 xUnit 单元测试并上传 TRX 结果；依赖锁文件不变时复用 NuGet 包缓存。详见 [NuGet 缓存说明](nuget-cache.md)。
 
 ## 5. 发布开发版本

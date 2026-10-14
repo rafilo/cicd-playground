@@ -70,13 +70,7 @@ jobs:
           build-args: VERSION=${{ github.sha }}
       - name: Verify read-only non-root container
         shell: bash
-        run: |
-          set -euo pipefail
-          docker run -d --name podflow-ci --read-only --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 -p 127.0.0.1:18081:8080 podflow:ci
-          trap 'docker logs podflow-ci; docker rm -f podflow-ci' EXIT
-          curl --retry 20 --retry-delay 1 --retry-connrefused --fail http://127.0.0.1:18081/readyz
-          curl --fail http://127.0.0.1:18081/ | grep -q 'Traffic distribution'
-          curl --fail http://127.0.0.1:18081/api/whoami | python3 -c 'import json,sys; body=json.load(sys.stdin); assert body["version"] == sys.argv[1]' "$GITHUB_SHA"
+        run: bash scripts/verify-container.sh podflow:ci "$GITHUB_SHA"
   publish:
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     needs: test
