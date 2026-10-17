@@ -10,33 +10,18 @@ permissions:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+env:
+  CACHE: ${{ github.workspace }}/.nuget/packages
 jobs:
   test:
+    name: .NET unit tests
     runs-on: ubuntu-latest
-    env:
-      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: ./.github/actions/setup-dotnet-cache
         with:
-          global-json-file: global.json
-      - name: Restore cached NuGet packages
-        id: nuget-cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.NUGET_PACKAGES }}
-          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', 'NuGet.Config', '**/*.csproj', '**/packages.lock.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/Directory.Packages.props') }}
-      - name: Report NuGet cache result
-        env:
-          CACHE_HIT: ${{ steps.nuget-cache.outputs.cache-hit }}
-        run: echo "NuGet cache exact hit=$CACHE_HIT; restore reuses packages from NUGET_PACKAGES."
-      - uses: actions/setup-node@v4
-        with: {node-version: '24'}
-      - name: Restore locked dependencies (reuse cached packages)
-        run: |
-          dotnet restore test/UnitTests/PodFlow.UnitTests.csproj --configfile NuGet.Config --locked-mode
-          dotnet restore test/PodFlow.SmokeTests.csproj --configfile NuGet.Config --locked-mode
-      - name: Run .NET unit tests without another restore
+          cache-path: ${{ env.CACHE }}
+      - name: Run .NET unit tests
         run: dotnet test test/UnitTests/PodFlow.UnitTests.csproj -c Release --no-restore --logger "trx;LogFileName=unit-tests.trx" --results-directory TestResults
       - name: Upload .NET unit test results
         if: always()
@@ -45,22 +30,37 @@ jobs:
           name: dotnet-unit-test-results
           path: TestResults/*.trx
           if-no-files-found: ignore
+  integration:
+    name: Start application and run HTTP integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-dotnet-cache
+        with:
+          cache-path: ${{ env.CACHE }}
       - run: dotnet build test/PodFlow.SmokeTests.csproj -c Release --no-restore
-      - name: Run .NET HTTP integration checks
+      - name: Start Kestrel and verify HTTP endpoints
         run: dotnet run --project test/PodFlow.SmokeTests.csproj -c Release --no-build
+  configuration:
+    name: Tooling and Kubernetes configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
       - run: npm test && npm run validate
       - run: node --check app/wwwroot/client.js
-      - name: Install pinned kubectl
-        shell: bash
-        run: |
-          curl -fsSLo /tmp/kubectl https://dl.k8s.io/release/v1.36.1/bin/linux/amd64/kubectl
-          curl -fsSLo /tmp/kubectl.sha256 https://dl.k8s.io/release/v1.36.1/bin/linux/amd64/kubectl.sha256
-          echo "$(cat /tmp/kubectl.sha256)  /tmp/kubectl" | sha256sum --check
-          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+      - uses: ./.github/actions/setup-kubectl
       - run: kubectl kustomize k8s/overlays/dev > /tmp/rendered.yaml
       - run: kubectl kustomize k8s/overlays/prod > /tmp/production.yaml
+  probes:
+    name: Container security and real Pod probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build .NET runtime image on every PR
+      - name: Build .NET runtime image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -69,11 +69,13 @@ jobs:
           tags: podflow:ci
           build-args: VERSION=${{ github.sha }}
       - name: Verify read-only non-root container
-        shell: bash
         run: bash scripts/verify-container.sh podflow:ci "$GITHUB_SHA"
+      - uses: ./.github/actions/setup-kubectl
+      - name: Verify Kubernetes readiness, liveness and metrics
+        run: bash scripts/verify-pod-probes.sh podflow:ci "$GITHUB_SHA"
   publish:
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
-    needs: test
+    needs: [test, integration, configuration, probes]
     runs-on: ubuntu-latest
     permissions: {contents: write, packages: write, pull-requests: write}
     env:
