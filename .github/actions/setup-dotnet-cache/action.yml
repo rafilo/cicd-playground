@@ -7,15 +7,18 @@ inputs:
 runs:
   using: composite
   steps:
+    # Install the SDK version selected by global.json.
     - uses: actions/setup-dotnet@v4
       with:
         global-json-file: global.json
+    # Restore packages using a key derived from SDK, project and lockfile inputs.
     - name: Check NuGet package cache
       id: nuget-cache
       uses: actions/cache@v4
       with:
         path: ${{ inputs.cache-path }}
         key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', 'NuGet.Config', '**/*.csproj', '**/packages.lock.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/Directory.Packages.props') }}
+    # Restore locked packages and regenerate project assets even on a cache hit.
     - name: Restore locked dependencies using CACHE
       shell: bash
       env:
@@ -27,6 +30,7 @@ runs:
         # Restore still generates obj/project.assets.json on a cache hit.
         dotnet restore test/UnitTests/PodFlow.UnitTests.csproj --configfile NuGet.Config --locked-mode
         dotnet restore test/PodFlow.SmokeTests.csproj --configfile NuGet.Config --locked-mode
+    # Export the shared package directory to later steps in this job.
     - name: Set NuGet package directory for subsequent steps
       shell: bash
       env:
