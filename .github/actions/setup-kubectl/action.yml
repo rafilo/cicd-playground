@@ -1,0 +1,12 @@
+name: Setup pinned kubectl
+description: Install checksum-verified kubectl for manifest and Pod checks
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        curl -fsSLo /tmp/kubectl https://dl.k8s.io/release/v1.36.1/bin/linux/amd64/kubectl
+        curl -fsSLo /tmp/kubectl.sha256 https://dl.k8s.io/release/v1.36.1/bin/linux/amd64/kubectl.sha256
+        echo "$(cat /tmp/kubectl.sha256)  /tmp/kubectl" | sha256sum --check
+        sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
