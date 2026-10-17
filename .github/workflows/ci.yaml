@@ -57,6 +57,8 @@ jobs:
     name: Container security and real Pod probes
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOCKER_BUILD_SUMMARY: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -79,6 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {contents: write, packages: write, pull-requests: write}
     env:
+      DOCKER_BUILD_SUMMARY: 'true'
       PR_TOKEN: ${{ secrets.GITOPS_PR_TOKEN }}
     steps:
       - uses: actions/checkout@v4
