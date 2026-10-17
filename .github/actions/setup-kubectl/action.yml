@@ -3,6 +3,7 @@ description: Install checksum-verified kubectl for manifest and Pod checks
 runs:
   using: composite
   steps:
+    # Download pinned kubectl, verify its SHA-256 checksum and install the binary.
     - shell: bash
       run: |
         set -euo pipefail
