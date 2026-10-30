@@ -1,37 +1,45 @@
-# 前端主页与负载均衡
-应用新增英文 PodFlow 主页，显示请求总数、实际观察到的 Pod、平均响应时间、成功率、各 Pod 请求分布与最近 12 次响应。
-脚本和页面均不包含中文；中文仅保留在文档中。
+# Frontend homepage and load balancing
 
-## 请求链路
-浏览器 → 本机端口转发 → demo-web Service / 入口 Pod → demo ClusterIP Service → 3 个 demo 业务 Pod。
-入口与业务使用同一个 ASP.NET Core/.NET 10 镜像；入口设置 UPSTREAM_URL=http://demo。
-每次 API 代理请求使用一个新 TCP 连接，demo Service 的 sessionAffinity=None，由 Kubernetes 数据平面选择后端；不是 JavaScript 轮询 Pod，也不保证请求数严格相等。
-web 入口额外 1 个 Pod；入口与后端各请求 100m CPU/96Mi 内存，限制 500m/256Mi。3 个 demo 业务副本保持不变。
-入口单副本是本地学习环境的资源取舍，不是生产高可用入口。
+The application includes an English PodFlow homepage showing total requests, observed Pods, average response time, success rate, per-Pod request distribution, and the 12 most recent responses.
+The scripts, page, and documentation are in English.
 
-## 发布与访问
-代码提交触发 CI 构建并发布镜像；发布 PR 将真实 digest 和入口清单一起交付。合并后由 ArgoCD 自动同步。
+## Request path
+
+Browser → local port forward → demo-web Service / entry Pod → demo ClusterIP Service → three demo application Pods.
+The entry and backend use the same ASP.NET Core/.NET 10 image; the entry sets UPSTREAM_URL=http://demo.
+Each proxied API request uses a new TCP connection. The demo Service has sessionAffinity=None, and the Kubernetes data plane selects the backend. JavaScript does not poll individual Pods, and request counts are not guaranteed to be equal.
+The web entry adds one Pod. Both entry and backend Pods request 100m CPU/96Mi memory and have limits of 500m/256Mi. The three demo backend replicas remain unchanged.
+A single entry replica reduces resource use in the local learning environment; it is not a highly available production entry point.
+
+## Release and access
+
+Code commits trigger CI to build and publish an image. The release PR delivers the real digest together with the entry manifests. Argo CD syncs automatically after merge.
+
 ```powershell
 git pull --ff-only origin master
 kubectl --context kind-cicd-gitops rollout status deploy/demo -n cicd-demo --timeout=180s
 kubectl --context kind-cicd-gitops rollout status deploy/demo-web -n cicd-demo --timeout=180s
 kubectl --context kind-cicd-gitops port-forward -n cicd-demo svc/demo-web 8081:80
 ```
-访问 http://localhost:8081 ，点击 Send 30 requests。多次采样可查看不同 Pod；短批次可能没有覆盖全部副本。
-请转发 demo-web；直接 port-forward svc/demo 会选中单个 Pod，不能验证 Service 负载均衡。
+Open http://localhost:8081 and click Send 30 requests. Repeat the sample to observe different Pods; a short batch may not reach every replica.
+Forward demo-web. A direct port-forward to svc/demo selects a single Pod and cannot verify Service load balancing.
 
-## 验证
-以下是迁移前 Node 版本的历史记录；.NET 版本应按 [完整 CI/CD 指南](dotnet-cicd.md) 重新发布并验收。
-2026-10-09，在临时 cicd-preview 命名空间加载本地测试镜像并部署：
-- 3 个业务 Pod + 1 个入口 Pod Ready。
-- 60 次真实 Service 请求分布为 20、18、22，全部成功。
-- 浏览器执行 30 次请求全部成功，并观察到 3 个后端 Pod。
-- 桌面 1440px 与手机 390px 布局检查通过，无页面脚本错误。
-- API、静态文件、404/405、源码不可访问、独立 upstream TCP 连接和 502 故障响应测试通过。
-- 这些是隔离预览验证；正式 cicd-demo 发布仍以镜像 PR 合并后 ArgoCD 状态为准。
-页面计数属于当前浏览器会话，不代表实时集群健康；刷新或 Reset 会清空。
-预览截图保存在本机 evidence/frontend-desktop.png 与 frontend-mobile.png（未提交到 Git）。
+## Validation
 
-官方依据：
+The following is a historical record for the Node version before migration. Publish and verify the .NET version using [the complete CI/CD runbook](dotnet-cicd.md).
+On 2026-10-09, a local test image was loaded and deployed in the temporary cicd-preview namespace:
+
+- Three application Pods and one entry Pod were Ready.
+- All 60 real Service requests succeeded, with a distribution of 20, 18, and 22.
+- All 30 browser requests succeeded, and three backend Pods were observed.
+- Desktop 1440px and mobile 390px layout checks passed, with no page script errors.
+- Tests passed for the API, static files, 404/405 responses, inaccessible source files, separate upstream TCP connections, and 502 failure responses.
+- These checks used an isolated preview. The actual cicd-demo release must be assessed using the Argo CD state after the image PR is merged.
+
+Page counters belong to the current browser session and do not represent live cluster health; refreshing or clicking Reset clears them.
+Preview screenshots are stored locally as evidence/frontend-desktop.png and frontend-mobile.png (not committed to Git).
+
+Official references:
+
 - https://kubernetes.io/docs/concepts/services-networking/service/
 - https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/

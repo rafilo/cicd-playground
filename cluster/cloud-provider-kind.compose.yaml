@@ -1,0 +1,14 @@
+services:
+  cloud-provider-kind:
+    # Official cloud-provider-kind v0.12.0, pinned by registry digest.
+    image: registry.k8s.io/cloud-provider-kind/cloud-controller-manager@sha256:1b97632e5dfec8f83c7e970cf18cedb9e6b707e272011d712cabf6ab59d323c9
+    container_name: cicd-cloud-provider-kind
+    restart: unless-stopped
+    network_mode: kind
+    command:
+      - --enable-lb-port-mapping
+      - --gateway-channel=disabled
+      - --enable-default-ingress=false
+    volumes:
+      # Required to discover kind nodes and create load-balancer containers.
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -2,6 +2,10 @@
 
 A runnable learning project with an ASP.NET Core / .NET 10 application, a web dashboard, three backend Pods, GitHub Actions, GHCR, Kustomize, and Argo CD. See [the complete .NET CI/CD runbook](docs/dotnet-cicd.md) for development, release, production promotion, rollback, and the Azure AKS deployment path.
 
+For a local build deployed directly with Docker, kind and kubectl, follow [the native local Kubernetes commands](docs/local-k8s.md). This path uses `k8s/overlays/local` and does not require a project-local tools folder.
+
+For local LoadBalancer support and migration to the existing ARM64 AKS cluster, see [cloud-provider-kind and AKS deployment](docs/kind-loadbalancer-and-aks.md).
+
 - Repository: [rafilo/cicd-playground](https://github.com/rafilo/cicd-playground)
 - Default branch: `master`
 - Local checkout: `<your-directory>\cicd-gitops`
@@ -85,7 +89,7 @@ If the container does not exist, follow **Create or rebuild the cluster** below.
 If the container exists but the context is missing, restore its kubeconfig using the project-local kind executable:
 
 ```powershell
-.\tools\kind.exe export kubeconfig --name cicd-gitops
+kind export kubeconfig --name cicd-gitops
 kubectl config use-context kind-cicd-gitops
 ```
 
@@ -136,15 +140,13 @@ git clone https://github.com/rafilo/cicd-playground.git cicd-gitops
 Set-Location cicd-gitops
 ```
 
-### 2. Install the pinned kind executable
+### 2. Install kind on PATH
 
-These commands target Windows AMD64 and install kind inside the ignored `tools` directory:
+Install kind through Windows Package Manager, then reopen the terminal:
 
 ```powershell
-New-Item -ItemType Directory -Force tools | Out-Null
-curl.exe -fLo tools/kind.exe https://kind.sigs.k8s.io/dl/v0.33.0/kind-windows-amd64
-if ($LASTEXITCODE -ne 0) { throw 'kind download failed' }
-.\tools\kind.exe version
+winget install --id Kubernetes.kind --exact --version 0.33.0 --source winget
+kind version
 ```
 
 See the [official kind installation instructions](https://kind.sigs.k8s.io/docs/user/quick-start/) and release checksums when verifying the downloaded binary.
@@ -152,7 +154,7 @@ See the [official kind installation instructions](https://kind.sigs.k8s.io/docs/
 ### 3. Create the project cluster
 
 ```powershell
-.\tools\kind.exe create cluster --name cicd-gitops --config cluster/kind.yaml --wait 180s
+kind create cluster --name cicd-gitops --config cluster/kind.yaml --wait 180s
 if ($LASTEXITCODE -ne 0) { throw 'Cluster creation failed' }
 kubectl config use-context kind-cicd-gitops
 kubectl wait --for=condition=Ready nodes --all --timeout=180s
@@ -160,7 +162,7 @@ kubectl wait --for=condition=Ready nodes --all --timeout=180s
 
 The configuration pins the Kubernetes node image by digest. kind writes the connection information into kubeconfig.
 
-The alternative helper `scripts/cluster.ps1` reuses any healthy cluster in the current context; it does not guarantee that the selected cluster is the project cluster. To use it, put `tools` on the current terminal's PATH and check the current context first.
+The alternative helper `scripts/cluster.ps1` reuses any healthy cluster in the current context; it does not guarantee that the selected cluster is the project cluster. Install kind on PATH and check the current context first.
 
 ### 4. Bootstrap Argo CD and the application
 
@@ -350,8 +352,8 @@ Closing a port-forward terminal leaves the cluster running. Stopping Docker Desk
 | `ops/` | Optional lightweight Prometheus configuration |
 | `scripts/` | Cluster setup, bootstrap, inspection, and validation |
 | `.github/workflows/ci.yaml` | Tests, image publication, and release branch/PR |
-| `docs/` | Additional notes and historical verification records; some remain in Chinese |
-| `tools/` | Ignored local executables |
+| `docs/` | English guides, additional notes, and historical verification records |
+| `k8s/overlays/local/` | Local Docker image deployment using native commands |
 | `evidence/` | Optional ignored temporary verification output; safe to remove |
 
 ## Verification status

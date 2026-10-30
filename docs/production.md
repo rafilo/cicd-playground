@@ -4,7 +4,7 @@ This environment rehearses a production deployment on a separate local kind clus
 
 ## Start
 
-Install Docker Desktop (Linux containers), kubectl, Helm 3 or later, and the project kind executable at tools/kind.exe. Reserve loopback port 18080. Allow sufficient Docker memory for both clusters (12 GiB is recommended).
+Install Docker Desktop (Linux containers), kubectl, Helm 3 or later, and kind on PATH. Reserve loopback port 18080. Allow sufficient Docker memory for both clusters (12 GiB is recommended).
 
 ```powershell
 cd <your-directory>/cicd-gitops

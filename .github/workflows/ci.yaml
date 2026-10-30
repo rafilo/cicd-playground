@@ -12,7 +12,37 @@ concurrency:
   cancel-in-progress: true
 env:
   CACHE: ${{ github.workspace }}/.nuget/packages
+  TRIVY_VERSION: v0.76.1
 jobs:
+  # See docs/security-scanning.md for scope, release gates and remediation.
+  security:
+    name: Application dependency and secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # Scan committed NuGet lockfiles and application files without executing PR code.
+      - name: Scan application dependencies and secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: fs
+          scan-ref: app
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: 'false'
+          exit-code: '1'
+          format: json
+          output: trivy-app.json
+          timeout: 10m
+      - name: Upload application security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-app
+          path: trivy-app.json
+          if-no-files-found: warn
+          retention-days: 14
   # Run isolated .NET unit tests; this job can run alongside integration and configuration.
   test:
     name: .NET unit tests
@@ -71,13 +101,13 @@ jobs:
       - run: kubectl kustomize k8s/overlays/dev > /tmp/rendered.yaml
       # Render the production overlay without changing a cluster.
       - run: kubectl kustomize k8s/overlays/prod > /tmp/production.yaml
-  # Build and probe the test image only after all three prerequisite jobs succeed.
+  # Build and probe the test image only after tests, configuration and source scanning succeed.
   probes:
     # GitHub Actions uses needs (rather than dependsOn) to gate job execution.
-    needs: [test, integration, configuration]
+    needs: [test, integration, configuration, security]
     name: Container security and real Pod probes
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       DOCKER_BUILD_SUMMARY: 'false'
     steps:
@@ -94,6 +124,27 @@ jobs:
           push: false
           tags: podflow:ci
           build-args: VERSION=${{ github.sha }}
+      # Block runtime checks and publication on vulnerable OS/.NET packages or image secrets.
+      - name: Scan test container image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: podflow:ci
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: 'false'
+          exit-code: '1'
+          format: json
+          output: trivy-image.json
+          timeout: 10m
+      - name: Upload test image security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-test-image
+          path: trivy-image.json
+          if-no-files-found: warn
+          retention-days: 14
       # Start the test image with restricted permissions and verify HTTP behavior.
       - name: Verify read-only non-root container
         run: bash scripts/verify-container.sh podflow:ci "$GITHUB_SHA"
@@ -105,8 +156,9 @@ jobs:
   # Publish the release image only after every validation job succeeds.
   publish:
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
-    needs: [test, integration, configuration, probes]
+    needs: [test, integration, configuration, security, probes]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions: {contents: write, packages: write, pull-requests: write}
     env:
       DOCKER_BUILD_SUMMARY: 'true'
@@ -138,6 +190,28 @@ jobs:
           tags: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
           build-args: VERSION=${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      # The release build may resolve a newer runtime base image than the test build.
+      # Scan its exact registry digest before creating any GitOps deployment update.
+      - name: Scan published release digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: 'false'
+          exit-code: '1'
+          format: json
+          output: trivy-release.json
+          timeout: 10m
+      - name: Upload release image security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-release-image
+          path: trivy-release.json
+          if-no-files-found: warn
+          retention-days: 14
       # Write the published image name and digest into the development overlay.
       - run: node scripts/update-image.js
         env:
