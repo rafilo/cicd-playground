@@ -1,37 +1,44 @@
-# 运维与故障演练
-## 每日巡检
-运行 scripts/inspect.ps1；确认 Node Ready、业务 Ready 数 3、Restart 无异常、Argo Synced/Healthy、无 Warning events、监控 Targets up。磁盘不足时检查 Docker Desktop 磁盘，不盲目 prune 用户其他镜像。
-应用输出结构化访问日志到 stdout；kubectl logs -n cicd-demo -l app=demo --prefix --tail=100，崩溃用 kubectl logs Pod -n cicd-demo --previous。
-kubectl describe pod / events 定位调度、拉取、探针；资源通过 kubectl top（需要 metrics-server）或现有监控查看。
+# Operations and failure drills
 
-## 轻量监控和告警
+## Daily checks
+
+Run scripts/inspect.ps1. Confirm the Node is Ready, three application replicas are Ready, restart counts are normal, Argo is Synced/Healthy, there are no Warning events, and monitoring Targets are up. If disk space is low, inspect Docker Desktop disk usage rather than blindly pruning images belonging to other projects.
+The application writes structured access logs to stdout. Use `kubectl logs -n cicd-demo -l app=demo --prefix --tail=100`; after a crash, use `kubectl logs Pod -n cicd-demo --previous`.
+Use kubectl describe pod / events to investigate scheduling, image pulls, and probes. Check resources with kubectl top (requires metrics-server) or existing monitoring.
+
+## Lightweight monitoring and alerts
+
 kubectl create namespace cicd-observe
 kubectl apply -f ops
 kubectl port-forward -n cicd-observe deploy/demo-prometheus 9090:9090
-访问 localhost:9090/targets 与 /alerts。DNS discovery 抓取 3 个业务 Pod，Service/headless 服务提供发现；业务不可达、Ready endpoint 不足 3、Argo 应用不健康规则已配置。
-24h/256MB TSDB 与 emptyDir 控制开销，重启会丢历史，学习环境接受。没有外部收件人，默认告警在 UI 展示；需要通知时接入 Alertmanager 并在 Secret 管理 webhook，不能把 UI firing 当作通知已送达。
-集群健康仍由 inspect.ps1 检查；此配置没有冒充完整生产节点监控。现有 monitoring-demo 可按需复用，不修改其配置。
+Open localhost:9090/targets and /alerts. DNS discovery scrapes three application Pods through Service/headless Service discovery. Rules cover unreachable backends, fewer than three Ready endpoints, and an unhealthy Argo application.
+A 24h/256MB TSDB and emptyDir limit overhead. Restarting can lose history, which is acceptable for this learning environment. No external receiver is configured; alerts appear in the UI by default. Connect Alertmanager and manage webhooks through Secrets when notifications are required. A firing UI alert does not prove notification delivery.
+Cluster health is still checked by inspect.ps1; this configuration does not provide complete production node monitoring. The existing monitoring-demo can be reused as needed without changing its configuration.
 
-## 故障恢复
-删除一个业务 Pod：kubectl delete pod -n cicd-demo -l app=demo --field-selector=metadata.name=指定Pod
-Deployment 自动补回；等待 rollout，确认新 UID、3 Ready 和 HTTP。PDB minAvailable=2 保护 eviction/drain，不阻止直接 delete 或节点故障。
-单节点 drain 受 PDB 阻挡是预期，不能强制驱逐宣称高可用。学习项目无数据库，Pod 全为无状态。
-滚动更新 maxUnavailable=0/maxSurge=1 需要额外一个 Pod 的容量；探针失败会阻止升级继续。
+## Failure recovery
 
-## 回滚与恢复
-以 git revert 镜像更新 PR 的 merge commit 提交回滚 PR（merge commit 通常加 -m 1），审查合并，Argo 自动恢复旧 digest。保留 GHCR 旧 digest；kubectl rollout undo 会被 selfHeal 覆盖，不作为 GitOps 回滚。
-备份：Git 远程和离线 mirror 是业务清单权威；kubectl get appproject,application -n argocd -o yaml 导出到 backups（忽略 Git）；记录 Argo 版本与镜像 digest。
-Argo CLI 同版本时 argocd admin export -n argocd > 安全加密备份；备份可能含凭据，应加密存储并限权限。凭据原始来源为密码管理系统。
-恢复演练在新的 kind 集群：cluster.ps1 → bootstrap.ps1 → 从密码管理系统重建 repo/imagePullSecret → Argo 同步 → accept.ps1。Argo 元数据需要时用同版本 argocd admin import -n argocd。无业务卷无需 etcd 数据备份；未来引入数据库必须额外做应用一致性备份，Git 不能代替数据备份。
-建议每月演练恢复，目标学习环境 RTO 30 分钟；此目标未通过实际跨集群恢复验证。
+Delete one application Pod: `kubectl delete pod -n cicd-demo -l app=demo --field-selector=metadata.name=<pod-name>`.
+The Deployment replaces it automatically. Wait for rollout, then confirm a new UID, three Ready replicas, and working HTTP responses. PDB minAvailable=2 protects eviction/drain, but does not prevent direct deletion or node failure.
+A single-node drain being blocked by the PDB is expected. Forced eviction does not demonstrate high availability. The learning application has no database, and its Pods are stateless.
+Rolling updates with maxUnavailable=0/maxSurge=1 require capacity for one additional Pod. Failing probes prevent the rollout from proceeding.
 
-## 常见故障
-- ImagePullBackOff：检查 OWNER/全零 digest、GHCR 包可见性、Secret namespace、PAT scopes/SSO 和节点网络。
-- Argo ComparisonError：仓库 URL、main、只读仓库凭据、Kustomize path；私有仓库需要先添加 Repo。
-- PermissionDenied：AppProject 资源 whitelist 或目标不匹配。不要使用 * 扩权掩盖问题。
-- PR 创建失败：GITOPS_PR_TOKEN 是否设置、有 Contents/PR write、组织策略是否允许。
-- PR checks 未启动：检查 token、Actions 策略以及 GitHub 的 Approve workflows 按钮。
-- Pending：资源不足；保留探针和限制，增加 Docker 分配资源。
-- Probe failed：8080、路径、应用日志、只读文件系统是否兼容。
-- Argo OutOfSync：确认 PR 已合并，轮询 Git 可能需数分钟；不要由 CI 强制 apply。
-清理仅针对本项目 namespace，并先确认无其他资源：kubectl delete namespace cicd-demo cicd-observe；Argo 安装含共享 CRD/ClusterRole，禁止盲删全部 Argo CRD。删除本项目 Application 前了解 prune/finalizer 行为，本清单无级联删除 finalizer。
+## Rollback and restoration
+
+Create a rollback PR by using git revert on the image-update PR's merge commit (a merge commit usually requires -m 1). Review and merge it, then let Argo restore the old digest. Retain old GHCR digests. Self-healing overwrites kubectl rollout undo, so it is not a GitOps rollback method.
+Backups: the remote Git repository and an offline mirror are the authoritative application manifests. Export `kubectl get appproject,application -n argocd -o yaml` into backups (ignored by Git), and record the Argo version and image digest.
+With a matching Argo CLI version, redirect `argocd admin export -n argocd` to a securely encrypted backup. Backups may contain credentials; encrypt them and restrict access. The password management system is the source of credentials.
+Run restoration drills on a new kind cluster: cluster.ps1 → bootstrap.ps1 → recreate repository credentials/imagePullSecret from the password management system → Argo sync → accept.ps1. Restore Argo metadata with a matching version of argocd admin import -n argocd when necessary. There are no application volumes requiring an etcd data backup; any future database needs additional application-consistent backups. Git cannot replace data backups.
+A monthly restoration drill is recommended, with a learning-environment RTO target of 30 minutes. This target has not been validated by an actual cross-cluster restoration.
+
+## Common failures
+
+- ImagePullBackOff: check OWNER/zero-filled digests, GHCR package visibility, the Secret namespace, PAT scopes/SSO, and node networking.
+- Argo ComparisonError: check the repository URL, main, read-only repository credentials, and Kustomize path; add the repository first for private repositories.
+- PermissionDenied: check the AppProject resource allowlist and destination. Do not hide the problem by granting wildcard (*) access.
+- PR creation failed: check that GITOPS_PR_TOKEN is set, has Contents/PR write permissions, and is allowed by organization policy.
+- PR checks did not start: check the token, Actions policy, and GitHub's Approve workflows button.
+- Pending: check resource capacity. Keep probes and limits, and increase Docker's resource allocation.
+- Probe failed: check port 8080, paths, application logs, and read-only filesystem compatibility.
+- Argo OutOfSync: confirm the PR was merged; polling Git may take several minutes. Do not force an apply from CI.
+
+Limit cleanup to this project's namespaces, after checking for unrelated resources: `kubectl delete namespace cicd-demo cicd-observe`. The Argo installation includes shared CRDs/ClusterRoles; do not blindly delete all Argo CRDs. Understand prune/finalizer behavior before deleting this project's Application. This manifest has no cascading-deletion finalizer.

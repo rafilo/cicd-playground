@@ -1,52 +1,52 @@
-# .NET 完整 CI/CD 操作流程
+# Complete .NET CI/CD runbook
 
-应用已迁移为 ASP.NET Core / .NET 10。浏览器静态页面仍是 HTML/CSS/JavaScript；HTTP 服务和反向代理由 C# 实现。Node.js 只运行仓库自动化脚本，不进入应用镜像。数据库仍是可选的平台扩展示例，应用没有 SQL 功能。
+The application has migrated to ASP.NET Core / .NET 10. Browser assets remain HTML/CSS/JavaScript; C# implements the HTTP server and reverse proxy. Node.js runs only repository automation scripts and is not included in the application image. The database remains an optional platform extension example; the application has no SQL functionality.
 
-## 交付链路
+## Delivery flow
 
 ```mermaid
 flowchart TD
-  A[功能分支修改 C# / 页面] --> B[代码 PR]
+  A[Change C# / pages on a feature branch] --> B[Code PR]
   B --> C[restore / build / HTTP integration tests]
-  C --> D[自动化脚本测试 / Kustomize 渲染]
-  D --> E[Docker 多阶段构建 / 非 root 只读容器 smoke test]
-  E --> F[审查并合并 master]
-  F --> G[GHCR 发布 sha-commit 镜像]
-  G --> H[CI 生成 dev 镜像 digest PR]
-  H --> I[审查合并 digest PR]
-  I --> J[Argo CD 同步 dev]
-  J --> K[rollout / 版本 / 30 请求验收]
-  K --> L[生产晋级 PR：复制同一 digest]
-  L --> M[审查合并 / Argo CD 同步 prod]
-  M --> N[生产验收与监控]
-  N --> O[故障时通过 revert PR 恢复上一 digest]
+  C --> D[Automation script tests / Kustomize rendering]
+  D --> E[Docker multi-stage build / non-root read-only container smoke test]
+  E --> F[Review and merge into master]
+  F --> G[Publish sha-commit image to GHCR]
+  G --> H[CI creates dev image digest PR]
+  H --> I[Review and merge digest PR]
+  I --> J[Argo CD syncs dev]
+  J --> K[rollout / version / 30-request acceptance]
+  K --> L[Production promotion PR: copy the same digest]
+  L --> M[Review and merge / Argo CD syncs prod]
+  M --> N[Production acceptance and monitoring]
+  N --> O[Restore previous digest through a revert PR on failure]
 ```
 
-这是仓库已有 kind + GitOps 的完整交付路径。AKS Terraform 的首次创建及应用部署见后面的独立路径；它尚未接入真实 Azure 自动部署服务连接。
+This is the repository's complete delivery path for kind + GitOps. Initial AKS Terraform creation and application deployment follow the separate path below; that path is not connected to a real Azure automatic-deployment service connection.
 
-## 1. 文件与职责
+## 1. Files and responsibilities
 
-| 文件 | 职责 |
+| File | Responsibility |
 | --- | --- |
-| `global.json` | 固定 SDK 10.0.402，允许同 feature band 的补丁更新 |
-| `app/PodFlow.csproj`、`app/Program.cs` | .NET Web 应用、代理、健康与指标接口 |
-| `app/wwwroot/` | 原有页面与资源，显式白名单暴露 |
-| `test/PodFlow.SmokeTests.csproj` | 无外部测试包的 C# HTTP 集成测试可执行程序 |
-| `test/UnitTests/PodFlow.UnitTests.csproj` | xUnit 单元测试；NuGet 依赖通过 CI 缓存复用 |
-| `Dockerfile` | SDK 编译发布 → ASP.NET runtime，UID/GID 1000，端口 8080 |
-| `.github/workflows/ci.yaml` | PR 校验、镜像构建测试、master 发布、digest PR |
-| `scripts/update-image.js` | 修改 dev overlay 的镜像名与 digest |
-| `scripts/promote-production.ps1` | 将 dev 镜像身份复制到 prod overlay |
-| `scripts/verify-release.ps1` | 显式 context 下的 rollout、Argo、版本与 HTTP 验收 |
-| `argocd/application.yaml`、`argocd/prod/application.yaml` | 自动同步 dev/prod overlay |
-| `azure-pipelines.cd.yml` | 保留的 Azure DevOps CD **模拟**，只输出审查制品 |
-| `azure-pipelines.terraform.yml` | Terraform 静态校验，不创建 Azure 资源 |
+| `global.json` | Pins SDK 10.0.402 and allows patch updates within the same feature band |
+| `app/PodFlow.csproj`, `app/Program.cs` | .NET web application, proxy, health and metrics endpoints |
+| `app/wwwroot/` | Existing pages and assets exposed through an explicit allowlist |
+| `test/PodFlow.SmokeTests.csproj` | Executable C# HTTP integration test runner without external test packages |
+| `test/UnitTests/PodFlow.UnitTests.csproj` | xUnit unit tests; NuGet dependencies reused through the CI cache |
+| `Dockerfile` | SDK build/publish → ASP.NET runtime, UID/GID 1000, port 8080 |
+| `.github/workflows/ci.yaml` | PR validation, image build tests, master publication, digest PR |
+| `scripts/update-image.js` | Updates the image name and digest in the dev overlay |
+| `scripts/promote-production.ps1` | Copies the dev image identity into the prod overlay |
+| `scripts/verify-release.ps1` | Rollout, Argo, version, and HTTP acceptance using an explicit context |
+| `argocd/application.yaml`, `argocd/prod/application.yaml` | Automatically sync dev/prod overlays |
+| `azure-pipelines.cd.yml` | Retained Azure DevOps CD **simulation**, producing review artifacts only |
+| `azure-pipelines.terraform.yml` | Static Terraform validation without creating Azure resources |
 
-应用接口保持 `/`、`/style.css`、`/client.js`、`/api/whoami`、`/healthz`、`/readyz`、`/metrics`。`UPSTREAM_URL=http://demo` 使相同镜像成为 Web 代理；不设置时作为后端。每次转发使用独立上游连接，避免连接复用固定命中同一 Pod。
+Application endpoints remain `/`, `/style.css`, `/client.js`, `/api/whoami`, `/healthz`, `/readyz`, and `/metrics`. Setting `UPSTREAM_URL=http://demo` turns the same image into a web proxy; without it, the image runs as a backend. Each forwarded request uses a separate upstream connection to avoid connection reuse repeatedly targeting the same Pod.
 
-## 2. 本地开发与测试
+## 2. Local development and testing
 
-安装 .NET SDK 10.0.402、Node 24、Git；容器与集群验证还需要 Docker Desktop、kubectl、kind。仓库 `tools/dotnet/dotnet.exe` 是本次校验用的忽略文件，不会随 Git 分发；通常将已安装 SDK 的 `dotnet` 加入 PATH。
+Install .NET SDK 10.0.402, Node 24, and Git. Container and cluster validation also require Docker Desktop, kubectl, and kind. All commands use standard installations on PATH rather than a temporary project-local tools directory. When building and deploying only through Docker, the host does not need the .NET SDK because the Dockerfile provides it. See [native local Kubernetes commands](local-k8s.md) for local deployment steps.
 
 ```powershell
 git switch -c codex/migrate-dotnet
@@ -62,25 +62,25 @@ node --check app/wwwroot/client.js
 dotnet run --project app/PodFlow.csproj --urls http://localhost:8080
 ```
 
-打开 http://localhost:8080。单独运行时只有一个本地后端身份；三个 Pod 的分布演示需要 Kubernetes。测试 runner 通过真实随机端口 Kestrel 验证页面、静态资源、路由隔离、探针、指标、安全响应头、代理、独立上游连接以及不可用/错误/超大响应。它是 `dotnet run` 执行的集成测试程序，不能用 `dotnet test` 替代。
+Open http://localhost:8080. A standalone instance has one local backend identity; demonstrating traffic distribution across three Pods requires Kubernetes. The test runner uses real Kestrel instances on random ports to verify pages, static assets, route isolation, probes, metrics, security headers, proxy behavior, separate upstream connections, and unavailable/invalid/oversized responses. It is an integration test executable run with `dotnet run`; `dotnet test` is not a substitute.
 
 ```powershell
 docker build --build-arg VERSION=local-dotnet -t podflow:local .
 docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 -p 8080:8080 podflow:local
 ```
 
-## 3. 配置 GitHub 与 Argo CD（一次性）
+## 3. Configure GitHub and Argo CD (once)
 
-- 确认远端仓库、`master` 分支及 Argo CD 的 repoURL 相符；fork 项目需同步修改 Argo repoURL 和镜像仓库名。
-- 启用 GitHub Actions，允许工作流写入 Packages；发布 job 使用 GITHUB_TOKEN 推送 GHCR。
-- 将 GHCR package 设置为公开，使现有集群无需拉取 secret。私有包需额外配置 imagePullSecrets，不能把凭据放入 Git。
-- 自动创建 release PR 需要 `GITOPS_PR_TOKEN`，使用对目标仓库 Contents/Pull requests 写权限的受限 token，并按组织策略管理。没有该 secret 时，CI 只推送 review branch，由维护者手工创建 PR。
-- 保护 `master`，要求 PR 审查和 CI 的 `test` job，通过后才允许合并。使用 PAT/GitHub App 创建 release PR 可触发 PR 检查；默认 GITHUB_TOKEN 创建事件通常不会触发后续工作流。
-- 按根 README 创建 kind 开发集群并运行 `scripts/bootstrap.ps1`；按 `docs/production.md` 创建独立生产演练集群。私有仓库还需配置 Argo 仓库凭据。
+- Confirm the remote repository, `master` branch, and Argo CD repoURL agree. For forks, update both the Argo repoURL and image repository name.
+- Enable GitHub Actions and allow the workflow to write Packages. The publish job uses GITHUB_TOKEN to push to GHCR.
+- Make the GHCR package public so the existing cluster does not need a pull secret. Private packages require imagePullSecrets; never store credentials in Git.
+- Automatic release PR creation requires `GITOPS_PR_TOKEN`. Use a restricted token with Contents/Pull requests write access to the target repository, managed under organization policy. Without this secret, CI only pushes a review branch and a maintainer creates the PR manually.
+- Protect `master` and require PR reviews and CI's `test` job before merging. A PAT/GitHub App can trigger checks on release PRs; events created with the default GITHUB_TOKEN generally do not trigger subsequent workflows.
+- Follow the root README to create the kind development cluster and run `scripts/bootstrap.ps1`. Follow `docs/production.md` to create the separate production rehearsal cluster. Private repositories also need Argo repository credentials.
 
-不要先把 overlay 改成不存在的 .NET digest。现有 dev/prod digest 仍对应历史 Node 镜像，必须先完成首次 .NET 镜像发布，再通过 release PR 更新。
+Do not update an overlay to a .NET digest that does not exist. Existing dev/prod digests still refer to historical Node images; publish the first .NET image before updating them through a release PR.
 
-## 4. 代码 PR 与 CI
+## 4. Code PR and CI
 
 ```powershell
 git add app test k8s/base Dockerfile .dockerignore global.json NuGet.Config package.json .github scripts README.md docs .gitignore
@@ -89,19 +89,19 @@ git push -u origin HEAD
 gh pr create --base master --title "Migrate application to .NET" --body "Replace the HTTP server with ASP.NET Core and validate the existing application contract and container deployment."
 ```
 
-以上为操作示例，本次修改没有执行 commit/push/PR。提交前检查 `git diff --cached`，保留其他尚未提交的 Terraform 工作。
+These are example commands; the migration changes did not perform a commit, push, or PR creation. Inspect `git diff --cached` before committing and preserve other uncommitted Terraform work.
 
-PR 自动执行 SDK restore/build、C# 集成测试、Node 镜像更新测试、配置检查、两个 overlay 渲染，并构建真实 Linux 镜像。容器测试使用只读文件系统、UID 1000、删除 capabilities，并检查探针、页面和 APP_VERSION。PR 不推镜像、不访问集群。
+PR validation automatically runs SDK restore/build, C# integration tests, Node image-update tests, configuration checks, rendering of both overlays, and a real Linux image build. Container tests use a read-only filesystem, UID 1000, and dropped capabilities, and check probes, pages, and APP_VERSION. PRs do not push images or access an existing cluster.
 
-`scripts/verify-container.sh` 将测试容器的 8080 映射到 GitHub runner 的 `127.0.0.1:18081`；它不访问开发者电脑或 Kubernetes Pod。就绪检查会重试启动期间的连接重置、拒绝连接及 HTTP 错误，并检查容器是否提前退出。每次请求设有超时，最多尝试 30 次；就绪后才验证页面与版本。退出时打印容器状态和日志，并清理测试容器。`--noproxy '*'` 确保本机流量不经 HTTP 代理。
+`scripts/verify-container.sh` maps the test container's port 8080 to `127.0.0.1:18081` on the GitHub runner; it does not access the developer's computer or Kubernetes Pods. Readiness checks retry connection resets, refused connections, and HTTP errors during startup, and check for early container exit. Each request has a timeout, with at most 30 attempts; page and version checks run only after readiness succeeds. On exit, the script prints container status and logs and cleans up the test container. `--noproxy '*'` keeps local traffic out of HTTP proxies.
 
-CI 还运行 xUnit 单元测试并上传 TRX 结果；依赖锁文件不变时复用 NuGet 包缓存。详见 [NuGet 缓存说明](nuget-cache.md)。
+CI also runs xUnit unit tests and uploads TRX results, reusing cached NuGet packages when dependency lockfiles are unchanged. See [NuGet caching](nuget-cache.md).
 
-## 5. 发布开发版本
+## 5. Release to development
 
-代码 PR 合并后，CI 再次测试并推送 `ghcr.io/<owner>/<repo>:sha-<commit>`。部署使用返回的 `sha256:...`，不使用可变 tag。镜像设置 `APP_VERSION=<source commit SHA>`。
+After the code PR is merged, CI tests again and pushes `ghcr.io/<owner>/<repo>:sha-<commit>`. Deployment uses the returned `sha256:...`, not a mutable tag. The image sets `APP_VERSION=<source commit SHA>`.
 
-CI 更新 `k8s/overlays/dev/kustomization.yaml`，创建 `gitops/image-<sha>` PR；没有 PR token 时，从该分支手工创建 PR。审查镜像来源与 digest、合并后，Argo CD 自动同步。镜像 PR 不改应用源码，push 路径过滤避免因此再发布一次镜像；其 PR 检查仍会运行。
+CI updates `k8s/overlays/dev/kustomization.yaml` and creates a `gitops/image-<sha>` PR. Without a PR token, create the PR manually from that branch. Review the image source and digest, then merge; Argo CD syncs automatically. The image PR does not change application source, and push path filters prevent another image publication for that change. Its PR checks still run.
 
 ```powershell
 kubectl --context kind-cicd-gitops -n argocd get application cicd-demo
@@ -109,17 +109,17 @@ kubectl --context kind-cicd-gitops -n cicd-demo get pods -o wide
 kubectl --context kind-cicd-gitops -n cicd-demo port-forward svc/demo-web 8081:80
 ```
 
-保留 port-forward，在另一个终端执行，`ExpectedVersion` 填本次镜像的源代码 40 位 SHA，而非 digest PR 的 SHA：
+Keep the port forward running and execute the following in another terminal. Set `ExpectedVersion` to the image's 40-character source commit SHA, not the digest PR's SHA:
 
 ```powershell
 ./scripts/verify-release.ps1 -Context kind-cicd-gitops -Namespace cicd-demo -ArgoApplication cicd-demo -ExpectedVersion '<source-commit-sha>'
 ```
 
-验收要求 rollout 成功、Argo Synced/Healthy、30 次请求均返回目标版本。输出 Pod 分布；随机请求不保证平均分布。
+Acceptance requires a successful rollout, Argo Synced/Healthy, and all 30 requests returning the target version. Pod distribution is printed; random requests do not guarantee an even distribution.
 
-## 6. 生产晋级
+## 6. Production promotion
 
-先确认 dev 已部署并验收，再基于最新 master 创建晋级分支。生产复用同一镜像，**不重新构建**：
+First confirm dev is deployed and accepted, then create a promotion branch from the latest master. Production reuses the same image and **does not rebuild it**:
 
 ```powershell
 git switch master
@@ -134,34 +134,34 @@ git push -u origin HEAD
 gh pr create --base master --title "Promote .NET release to production" --body "Promote the exact image digest accepted in development."
 ```
 
-审查并合并后，生产 Argo CD 同步 prod overlay，保留现有 3 个后端、2 个 Web 副本、Ingress 与 PDB。用真实源代码 SHA 验收：
+After review and merge, production Argo CD syncs the prod overlay, retaining the existing three backend replicas, two web replicas, Ingress, and PDBs. Verify using the actual source commit SHA:
 
 ```powershell
 ./scripts/verify-release.ps1 -Context kind-cicd-production -Namespace cicd-prod -BaseUrl http://localhost:18080 -ArgoApplication cicd-production -ExpectedVersion '<source-commit-sha>'
 ```
 
-## 7. 回滚与维护
+## 7. Rollback and maintenance
 
-在新分支 `git revert <修改目标环境 digest 的提交>`，审查并合并 rollback PR，Argo CD 自动恢复旧镜像；再用旧版本 SHA 验收。不要以 `kubectl rollout undo` 代替 GitOps 回滚，自愈会重新覆盖它。旧 GHCR 镜像必须保留。
+On a new branch, run `git revert <commit-that-changed-the-target-environment-digest>`, then review and merge the rollback PR. Argo CD automatically restores the previous image; verify it with the previous version's SHA. Do not substitute `kubectl rollout undo` for GitOps rollback, since self-healing overwrites it. Retain old GHCR images.
 
-持续观察 Ready 副本、重启、错误率、延迟、Prometheus 指标和 JSON 容器日志。定期更新 SDK/runtime 镜像、安全扫描与资源容量。SDK 使用具体版本，runtime 目前使用 `10.0` 维护 tag；正式生产应审查并固定 base-image digest，以及增加镜像扫描、签名和准入验证。
+Continuously observe Ready replicas, restarts, error rates, latency, Prometheus metrics, and JSON container logs. Regularly update SDK/runtime images, security scans, and resource capacity. The SDK uses a specific version; the runtime currently uses the `10.0` servicing tag. For real production, review and pin the base-image digest and add image scanning, signing, and admission verification.
 
-## 8. Azure AKS Terraform 路径
+## 8. Azure AKS Terraform path
 
-这条路径复用相同 .NET 镜像，但目前应用由 Terraform 管理，不能让 Argo CD 同时管理同一批资源。
+This path reuses the same .NET image, but Terraform currently manages the application. Argo CD must not manage the same resources simultaneously.
 
-1. 按 `infra/azure/README.md` 填写订阅、Entra IDs；在能访问 VNet/私有 DNS 的 runner 上执行 platform init → plan → 审查 → apply。
-2. 平台管理员预创建 `cicd-azure` 命名空间。应用身份只有该 namespace 的 Writer 和 Cluster User 权限。
-3. GitHub CI 发布 .NET 镜像并完成 dev 验收后，将其真实 GHCR digest 写入 `infra/azure/application/terraform.tfvars` 的 `image`，指定 AKS context。
-4. 在私网 runner 上执行 application init → plan → 审查 → apply；使用 AKS context、`cicd-azure` namespace port-forward 后运行 `verify-release.ps1`，不传 ArgoApplication。
-5. 后续发布或回滚使用目标 digest 重复 application plan/apply，并验证对应源代码 SHA。两个 Terraform root 使用独立、安全的远程状态。
+1. Follow `infra/azure/README.md` to configure the subscription and Entra IDs. Run platform init → plan → review → apply on a runner with VNet/private DNS access.
+2. A platform administrator precreates the `cicd-azure` namespace. The application identity has only Writer access to that namespace and Cluster User permissions.
+3. After GitHub CI publishes the .NET image and dev acceptance succeeds, set `image` in `infra/azure/application/terraform.tfvars` to its real GHCR digest and specify the AKS context.
+4. On a private-network runner, execute application init → plan → review → apply. Port-forward using the AKS context and `cicd-azure` namespace, then run `verify-release.ps1` without ArgoApplication.
+5. For later releases or rollbacks, repeat application plan/apply with the target digest and verify the corresponding source commit SHA. The two Terraform roots use separate, secure remote state.
 
-原有 `azure-pipelines.cd.yml` 和新增 Terraform 校验流水线都没有真实 Azure 部署权限。若需要 Azure DevOps 自动 apply，还必须配置 OIDC service connection、受保护环境审批、远程 backend 与 VNet 自托管 agent；本次未把这些缺失条件描述为已上线。
+Neither the existing `azure-pipelines.cd.yml` nor the added Terraform validation pipeline has real Azure deployment permissions. Automatic Azure DevOps apply also requires an OIDC service connection, protected-environment approvals, a remote backend, and a VNet-connected self-hosted agent. These missing integrations are not claimed to be live.
 
-## 9. 本次验证边界
+## 9. Migration verification boundaries
 
-源代码迁移不等于线上应用已迁移。只有新镜像发布、目标 overlay/变量更新、Argo/Terraform 部署及版本验收完成后，集群才运行 .NET。仓库历史 Node 集群验证记录不用于证明 .NET 已部署。
+Migrating source code does not migrate the running application. The cluster runs .NET only after the new image is published, the target overlay/variables are updated, Argo/Terraform deploys it, and version acceptance completes. Historical Node cluster validation records do not prove that .NET is deployed.
 
-本机编译、HTTP 集成测试与发布验证结果见 [本次验证记录](dotnet-validation.md)。
+See [the migration validation record](dotnet-validation.md) for local build, HTTP integration test, and publish validation results.
 
-官方参考：[.NET 支持策略](https://dotnet.microsoft.com/en-us/platform/support/policy)、[.NET Docker](https://learn.microsoft.com/en-us/dotnet/core/docker/)、[GitHub Actions 发布镜像](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)。
+Official references: [.NET support policy](https://dotnet.microsoft.com/en-us/platform/support/policy), [.NET Docker](https://learn.microsoft.com/en-us/dotnet/core/docker/), [publishing images with GitHub Actions](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images).

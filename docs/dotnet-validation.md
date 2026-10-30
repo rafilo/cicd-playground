@@ -1,6 +1,6 @@
 # .NET migration verification — 2026-10-14
 
-Validated locally with the checksum-verified Microsoft .NET SDK 10.0.402 installed in the ignored `tools/dotnet` directory.
+Historical validation used a checksum-verified Microsoft .NET SDK 10.0.402 downloaded into a temporary project directory. That directory has since been removed; current deployment uses standard commands on PATH and the SDK inside the Docker build.
 
 | Check | Result |
 | --- | --- |

@@ -3,15 +3,15 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 $context = 'kind-cicd-production'
 function K { & kubectl --context $context @args; if ($LASTEXITCODE -ne 0) { throw 'Production kubectl command failed.' } }
 function Invoke-ProductionHelm { & helm @args; if ($LASTEXITCODE -ne 0) { throw 'Production Helm command failed.' } }
-$clusters = & ./tools/kind.exe get clusters
+$clusters = & kind get clusters
 if ($LASTEXITCODE -ne 0) { throw 'Unable to list kind clusters.' }
 if ($clusters -notcontains 'cicd-production') {
-  & ./tools/kind.exe create cluster --name cicd-production --config cluster/kind-production.yaml --image kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed --wait 180s
+  & kind create cluster --name cicd-production --config cluster/kind-production.yaml --image kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed --wait 180s
   if ($LASTEXITCODE -ne 0) { throw 'Production cluster creation failed.' }
 } else {
-  $nodes = & ./tools/kind.exe get nodes --name cicd-production
+  $nodes = & kind get nodes --name cicd-production
   foreach ($node in $nodes) { & docker start $node | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'Unable to start production node.' } }
-  & ./tools/kind.exe export kubeconfig --name cicd-production
+  & kind export kubeconfig --name cicd-production
   if ($LASTEXITCODE -ne 0) { throw 'Unable to export production kubeconfig.' }
 }
 K wait --for=condition=Ready nodes --all --timeout=180s
